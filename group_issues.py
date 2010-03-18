@@ -109,8 +109,8 @@ def cluster(corpus):
                            if v >= SIM_THRESHOLD))
         seen.update(scores[key])
 
-    return scores
-
+    return sorted(scores.iteritems(),
+                  cmp=lambda x, y: cmp(len(x[1]), len(y[1])), reverse=True)
 
 def group_support_issues():
     if len(sys.argv) > 1:
@@ -126,10 +126,10 @@ def group_support_issues():
         msg = row[2]
         corpus.load(key, msg)
 
-    for doc, friends in cluster(corpus).iteritems():
+    for doc, friends in cluster(corpus):
         if len(friends) == 0:
             continue
-        print "* " + corpus.docs[doc].document
+        print "* %s (%d)" % (corpus.docs[doc].document, len(friends))
         for friend, score in friends.iteritems():
             print "   *  %f:  " % score + corpus.docs[friend].document
 
