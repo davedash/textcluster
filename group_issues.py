@@ -5,68 +5,56 @@ import math
 import csv
 import os
 import sys
+from collections import defaultdict
 
 from stemming.porter2 import stem
-from numpy import sqrt, dot
 
+from search import STOPWORDS
 
-SIM_THRESHOLD = 0.3
-
+SIM_THRESHOLD = 5
+MIN_DOCUMENT_LENGTH = 3
 
 def tokenize(str):
     # lowercase
-    return [stem(c.strip("""\\.!?,(){}[]"'""")) for c in str.lower().split()]
-
+    strips = """\\.!?,(){}[]"'"""
+    return [stem(c.strip(strips)) for c in str.lower().split()
+            if STOPWORDS.get(c.strip(strips)) is None]
 
 
 class Document():
-    tf = {}
-    similar = []
-    _idf = None
-    _vector = None
 
     def __init__(self, corpus, document):
         self.corpus = corpus
         self.document = document
-        self.words = tokenize(document)
-        # for word in set(self.words):
-        #    self.tf[word] = self.words.count(word) / float(len(self.words))
+        self.tf = {}
+        self._tf_idf = None
+        words = tokenize(document)
+        for word in set(words):
+            self.tf[word] = words.count(word) / float(len(words))
 
-    def __unicode__(self):
+    def __repr__(self):
         return self.document
 
     def idf(self, cached=True):
-        if cached and self._idf:
-            return self._idf
 
         num_docs = len(self.corpus.docs)
         idf = {}
         for word in self.tf.keys():
-            num_occurences = len([d for d in self.corpus.docs.values()
-                                  if d.tf.get(word) is not None])
-
+            num_occurences = self.corpus.words.get(word, 0)
             idf[word] = math.log(num_docs / (1.0 + num_occurences))
-        self._idf = idf
+
         return idf
 
-    def tf_idf(self):
-        tf_idf = {}
+    def tf_idf(self, cached=True):
+        if self._tf_idf and cached:
+            return self._tf_idf
+
+        self._tf_idf = {}
         idf = self.idf()
         for word in self.tf.keys():
-            tf_idf[word] = idf[word] * self.tf[word]
-        return tf_idf
+            self._tf_idf[word] = idf[word] * self.tf[word]
 
-    def vector(self, cached=True):
-        if self._vector and cached:
-            return self._vector
-
-        v = []
-        tf_idf = self.tf_idf()
-        for word in self.corpus.words.keys():
-            v.append(tf_idf.get(word))
-
-        self._vector = v
-        return v
+        return self._tf_idf
 
 
 class Corpus():
@@ -75,57 +63,53 @@ class Corpus():
 
     def __init__(self):
         self.docs = {}
-        self.words = {}
+        self.words = defaultdict(int)
+        self.index = defaultdict(dict)
 
     def load(self, key, document):
         """Adds a document to the corpus."""
         doc = Document(self, document)
+
+        if len(doc.tf) < MIN_DOCUMENT_LENGTH:
+            return
+
         for k in doc.tf.keys():
-            self.words[k] = 1
+            if k in self.words:
+                self.words[k] += 1
+
         self.docs[key] = doc
 
-mag = lambda x: sqrt(dot(x, x))
-
-def tanimoto(doc, other):
-    """
-    We can pull the tf.idf dictionaries and turn them into vectors.
-    Tanimoto is dot(A,B)/(magnitude(A)^2+magnitude(B)^2 - AB) where
-    A and B are vectors.
-    """
-    v1 = doc.vector()
-    v2 = other.vector()
-    dp = dot(v1, v2)
-    return dp / (mag(v1)**2 + mag(v2)**2 - dp)
-
-def tanimoto(doc, other):
-    v1 = set(doc.words)
-    v2 = other.words
-    i = v1.intersection(v2)
-    return float(len(i))/(len(v1)+len(v2)-len(i))
+    def create_index(self):
+        index = {}
+        for id, doc in self.docs.iteritems():
+            for word, weight in doc.tf_idf().iteritems():
+                self.index[word][id] = weight
 
 
 def cluster(corpus):
-    c = {}
     seen = {}
-    i = 0
-    for key in corpus.docs.keys():
-        i += 1
-        if i % 10000 == 0:
-            print i
+    scores = {}
+    corpus.create_index()
+    for key, doc in corpus.docs.iteritems():
         if seen.get(key):
             continue
         seen[key] = 1
-        similars = [] # key of similar items
-        for c_key in corpus.docs.keys():
-            if seen.get(c_key) is not None:
-                continue
-            if tanimoto(corpus.docs[key], corpus.docs[c_key]) > SIM_THRESHOLD:
-                similars.append(c_key)
-                seen[c_key] = 1
+        scores[key] = defaultdict(int)
 
-        c[key] = similars
-    return c
+        for word, o_weight in doc.tf_idf().iteritems():
+            if word in corpus.index:
+                matches = corpus.index[word]
 
+                for c_key, c_weight in matches.iteritems():
+                    if seen.get(c_key):
+                        continue
+                    scores[key][c_key] += o_weight * c_weight
+
+        scores[key] = dict(((k, v) for k, v in scores[key].iteritems()
+                           if v >= SIM_THRESHOLD))
+        seen.update(scores[key])
+
+    return scores
 
 
 def group_support_issues():
@@ -137,23 +121,17 @@ def group_support_issues():
     reader = csv.reader(open(filename))
 
     corpus = Corpus()
-    print "Loading Data"
-    i = 1
     for row in reader:
         key = int(row[0])
         msg = row[2]
-        if i % 10000 == 0:
-            print i
         corpus.load(key, msg)
-        i += 1
 
-    print "Clustering Data"
     for doc, friends in cluster(corpus).iteritems():
         if len(friends) == 0:
             continue
         print "* " + corpus.docs[doc].document
-        for friend in friends:
-            print "   *  " + corpus.docs[friend].document
+        for friend, score in friends.iteritems():
+            print "   *  %f:  " % score + corpus.docs[friend].document
 
 if __name__ == "__main__":
     group_support_issues()
