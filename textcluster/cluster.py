@@ -61,13 +61,20 @@ class Corpus():
     """Document corpus which calculates Term Frequency/Inverse Document
     Frequency."""
 
-    def __init__(self):
+    def __init__(self, similarity=SIM_THRESHOLD):
+        self.similarity = similarity
         self.docs = {}
         self.words = defaultdict(int)
         self.index = defaultdict(dict)
 
-    def load(self, key, document):
+    def add(self, document, key=None):
         """Adds a document to the corpus."""
+        if not key:
+            try:
+                key = document.id
+            except AttributeError:
+                key = document
+
         doc = Document(self, document)
 
         if len(doc.tf) < MIN_DOCUMENT_LENGTH:
@@ -86,52 +93,28 @@ class Corpus():
                 self.index[word][id] = weight
 
 
-def cluster(corpus):
-    seen = {}
-    scores = {}
-    corpus.create_index()
-    for key, doc in corpus.docs.iteritems():
-        if seen.get(key):
-            continue
-        seen[key] = 1
-        scores[key] = defaultdict(int)
+    def cluster(self):
+        seen = {}
+        scores = {}
+        self.create_index()
+        for key, doc in self.docs.iteritems():
+            if seen.get(key):
+                continue
+            seen[key] = 1
+            scores[key] = defaultdict(int)
 
-        for word, o_weight in doc.tf_idf().iteritems():
-            if word in corpus.index:
-                matches = corpus.index[word]
+            for word, o_weight in doc.tf_idf().iteritems():
+                if word in self.index:
+                    matches = self.index[word]
 
-                for c_key, c_weight in matches.iteritems():
-                    if seen.get(c_key):
-                        continue
-                    scores[key][c_key] += o_weight * c_weight
+                    for c_key, c_weight in matches.iteritems():
+                        if seen.get(c_key):
+                            continue
+                        scores[key][c_key] += o_weight * c_weight
 
-        scores[key] = dict(((k, v) for k, v in scores[key].iteritems()
-                           if v >= SIM_THRESHOLD))
-        seen.update(scores[key])
+            scores[key] = dict(((k, v) for k, v in scores[key].iteritems()
+                               if v >= self.similarity))
+            seen.update(scores[key])
 
-    return sorted(scores.iteritems(),
-                  cmp=lambda x, y: cmp(len(x[1]), len(y[1])), reverse=True)
-
-def group_support_issues():
-    if len(sys.argv) > 1:
-        filename = sys.argv[1]
-    else:
-        filename = os.path.join(os.path.dirname(__file__), 'data/result.csv')
-
-    reader = csv.reader(open(filename))
-
-    corpus = Corpus()
-    for row in reader:
-        key = int(row[0])
-        msg = row[2]
-        corpus.load(key, msg)
-
-    for doc, friends in cluster(corpus):
-        if len(friends) == 0:
-            continue
-        print "* %s (%d)" % (corpus.docs[doc].document, len(friends))
-        for friend, score in friends.iteritems():
-            print "   *  %f:  " % score + corpus.docs[friend].document
-
-if __name__ == "__main__":
-    group_support_issues()
+        return sorted(scores.iteritems(),
+                      cmp=lambda x, y: cmp(len(x[1]), len(y[1])), reverse=True)
