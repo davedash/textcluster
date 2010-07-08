@@ -23,12 +23,13 @@ def tokenize(str):
 
 class Document():
 
-    def __init__(self, corpus, document):
+    def __init__(self, corpus, obj):
         self.corpus = corpus
-        self.document = document
+        self.object = obj
+        self.document = unicode(obj)
         self.tf = {}
         self._tf_idf = None
-        words = tokenize(document)
+        words = tokenize(self.document)
         for word in set(words):
             self.tf[word] = words.count(word) / float(len(words))
 
@@ -116,5 +117,24 @@ class Corpus():
                                if v >= self.similarity))
             seen.update(scores[key])
 
-        return sorted(scores.iteritems(),
-                      cmp=lambda x, y: cmp(len(x[1]), len(y[1])), reverse=True)
+        scores = sorted(scores.iteritems(),
+                        cmp=lambda x, y: cmp(len(x[1]), len(y[1])),
+                        reverse=True)
+
+        groups = []
+        for score in scores:
+            g = Group()
+            g.primary = self.docs[score[0]]
+            for id, similarity in score[1].iteritems():
+                g.add_similar(self.docs[id].object, similarity)
+            groups.append(g)
+
+        return groups
+
+class Group:
+    primary = None
+    similars = []
+
+    def add_similar(self, obj, similarity):
+        self.similars.append(dict(object=obj, similarity=similarity))
+
