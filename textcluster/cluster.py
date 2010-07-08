@@ -11,7 +11,7 @@ from stemming.porter2 import stem
 
 from search import STOPWORDS
 
-SIM_THRESHOLD = 5
+SIM_THRESHOLD = .1
 MIN_DOCUMENT_LENGTH = 3
 
 def tokenize(str):
