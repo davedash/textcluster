@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
         name='textcluster',
-        version='0.0.1',
+        version='0.0.2',
         description='Tool to cluster documents according to text similarity.',
         long_description=open('README.rst').read(),
         author='Dave Dash',
