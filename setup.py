@@ -12,6 +12,7 @@ setup(
         license='BSD',
         packages=find_packages(),
         include_package_data=True,
+        install_requires=['stemmer'],
         classifiers=[
             'Development Status :: 4 - Beta',
             'Intended Audience :: Developers',
