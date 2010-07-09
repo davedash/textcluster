@@ -14,22 +14,25 @@ from search import STOPWORDS
 SIM_THRESHOLD = .1
 MIN_DOCUMENT_LENGTH = 3
 
-def tokenize(str):
-    # lowercase
-    strips = """\\.!?,(){}[]"'"""
-    return [stem(c.strip(strips)) for c in str.lower().split()
-            if STOPWORDS.get(c.strip(strips)) is None]
-
 
 class Document():
 
-    def __init__(self, corpus, obj):
+    def tokenize(self):
+        # lowercase
+        strips = """\\.!?,(){}[]"'"""
+        return [stem(c.strip(strips)) for c in self.document.lower().split()
+                if self.stopwords.get(c.strip(strips)) is None]
+
+    def __init__(self, corpus, obj, str=None, stopwords=STOPWORDS):
+        if not str:
+            str = unicode(obj)
+        self.stopwords = stopwords
         self.corpus = corpus
         self.object = obj
-        self.document = unicode(obj)
+        self.document = str
         self.tf = {}
         self._tf_idf = None
-        words = tokenize(self.document)
+        words = self.tokenize()
         for word in set(words):
             self.tf[word] = words.count(word) / float(len(words))
 
@@ -62,13 +65,14 @@ class Corpus():
     """Document corpus which calculates Term Frequency/Inverse Document
     Frequency."""
 
-    def __init__(self, similarity=SIM_THRESHOLD):
+    def __init__(self, similarity=SIM_THRESHOLD, stopwords=STOPWORDS):
+        self.stopwords = stopwords
         self.similarity = similarity
         self.docs = {}
         self.words = defaultdict(int)
         self.index = defaultdict(dict)
 
-    def add(self, document, key=None):
+    def add(self, document, key=None, str=None):
         """Adds a document to the corpus."""
         if not key:
             try:
@@ -76,7 +80,10 @@ class Corpus():
             except AttributeError:
                 key = document
 
-        doc = Document(self, document)
+        if not str:
+            str = unicode(document)
+
+        doc = Document(self, document, str=str, stopwords=self.stopwords)
 
         if len(doc.tf) < MIN_DOCUMENT_LENGTH:
             return
@@ -101,6 +108,7 @@ class Corpus():
         for key, doc in self.docs.iteritems():
             if seen.get(key):
                 continue
+
             seen[key] = 1
             scores[key] = defaultdict(int)
 
@@ -109,7 +117,7 @@ class Corpus():
                     matches = self.index[word]
 
                     for c_key, c_weight in matches.iteritems():
-                        if seen.get(c_key):
+                        if c_key in seen:
                             continue
                         scores[key][c_key] += o_weight * c_weight
 
@@ -120,20 +128,25 @@ class Corpus():
         scores = sorted(scores.iteritems(),
                         cmp=lambda x, y: cmp(len(x[1]), len(y[1])),
                         reverse=True)
-
         groups = []
-        for score in scores:
-            g = Group()
-            g.primary = self.docs[score[0]]
-            for id, similarity in score[1].iteritems():
+
+        for key, similars in scores:
+            if not similars:
+                continue
+            g = Group(self.docs[key].object)
+            for id, similarity in similars.iteritems():
                 g.add_similar(self.docs[id].object, similarity)
+            mycmp = lambda x, y: cmp(x['similarity'], y['similarity'])
+            g.similars.sort(cmp=mycmp)
             groups.append(g)
 
         return groups
 
 class Group:
-    primary = None
-    similars = []
+
+    def __init__(self, primary=None):
+        self.primary = primary
+        self.similars = []
 
     def add_similar(self, obj, similarity):
         self.similars.append(dict(object=obj, similarity=similarity))
