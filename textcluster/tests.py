@@ -17,5 +17,5 @@ def test_cluster():
     groups = c.cluster()
 
     eq_(len(groups), 2)
-    eq_(len(groups[0][1]), 1)
-    eq_(len(groups[1][1]), 1)
+    eq_(len(groups[0].similars), 1)
+    eq_(len(groups[1].similars), 1)
